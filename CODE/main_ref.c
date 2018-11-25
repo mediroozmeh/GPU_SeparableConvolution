@@ -10,12 +10,8 @@
 #include "extra.h"
 #include "param.h"
 
-#define KERNEL_RADIUS 8
-#define KERNEL_LENGTH (2 * KERNEL_RADIUS + 1)
 
 size_t localWorkSize[2], globalWorkSize[2];
-
-
 
 int main(int argc, char** argv) {
 
@@ -55,12 +51,10 @@ int main(int argc, char** argv) {
     cl_mem a_input_obj , b_input_obj , c_output_obj , d_output_obj;   //OpenCL memory buffer objects  
 //**  
      ////*** Host_memory  
-     cl_float*  a_input     = (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
-     cl_float*  b_input     = (cl_float *) malloc(KERNEL_LENGTH   * sizeof(cl_float));
-     cl_float*  d_output     = (cl_float *) malloc(KERNEL_LENGTH   * sizeof(cl_float));   
-     cl_float*  h_Buffer    = (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
-     cl_float*  h_OutputCPU = (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
-     cl_float*  h_OutputGPU = (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  a_input     =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  b_input     =  (cl_float *) malloc(KERNEL_LENGTH   * sizeof(cl_float));
+     cl_float*  c_output    =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  d_output    =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
 //***
 
 	//// Initializing host memory
@@ -119,7 +113,7 @@ int main(int argc, char** argv) {
      clGetPlatformInfo (platform_id, CL_PLATFORM_NAME, 0, NULL, &valuesize);
      value = (char*) malloc (valuesize);
      clGetPlatformInfo (platform_id, CL_PLATFORM_NAME, valuesize, value, 0);
-     printf( "Platfrom: %s \n" , value);
+     fprintf(fp, "Platfrom: %s \n" , value);
      free(value);     
 
    //////////////////////////*** Print Device name
@@ -128,17 +122,17 @@ int main(int argc, char** argv) {
      clGetDeviceInfo (device_id, CL_DEVICE_NAME, 0, NULL, &valuesize);
      value = (char*) malloc (valuesize);
      clGetDeviceInfo (device_id, CL_DEVICE_NAME, valuesize, value, 0);
-     printf("Device: %s \n",value);
+     fprintf(fp,"Device: %s \n",value);
      free(value);     
 
    ////////////////////////// Print Parallel compute units
 
      clGetDeviceInfo (device_id , CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(maxComputeUnits), &maxComputeUnits , NULL);
-     printf("Parallel Compute Units : %d\n", maxComputeUnits);
+     fprintf(fp,"Parallel Compute Units : %d\n", maxComputeUnits);
 
 
      clGetDeviceInfo (device_id ,  CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS , sizeof(workdimensions), &workdimensions , NULL);
-     printf("Maximum allowed work item in each direction : %d\n", workdimensions);
+     fprintf(fp,"Maximum allowed work item in each direction : %d\n", workdimensions);
 
 
 
@@ -147,12 +141,12 @@ int main(int argc, char** argv) {
 
        fprintf(fp,"Maximum allowed work-item:");
      for(int i=0 ; i< 3 ; i++){
-     printf(" %d", maxWorkitem[i]);
+     fprintf(fp," %d", maxWorkitem[i]);
      }
 
 
 clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup), &maxWorkGroup , NULL);     
-     printf("\nMaximum allowed work group size: %d\n", maxWorkGroup);
+     fprintf(fp,"\nMaximum allowed work group size: %d\n", maxWorkGroup);
 
 
     /////////// Device OpenCL version//
@@ -161,7 +155,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
       value = (char *) malloc (valuesize);
       clGetDeviceInfo(device_id, CL_DEVICE_OPENCL_C_VERSION, valuesize, value, NULL);
 
-      printf( "OpenCL C version: %s \n" , value);
+      fprintf(fp, "OpenCL C version: %s \n" , value);
 
       free(value);
 
@@ -176,7 +170,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 
 
     // Create a command queue
-    cl_command_queue command_queue = clCreateCommandQueue(context, device_id,  0 , &ret);
+    cl_command_queue command_queue = clCreateCommandQueue(context, device_id,  0 , &err);
     if(err != CL_SUCCESS)
      print_error("Failed to create command queue", __LINE__);
          
@@ -184,21 +178,17 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 
  /////////////
  //
-     a_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, KERNEL_LENGTH * sizeof(cl_float), b_input, &ret);
-  //2      
-        b_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, imageW * imageH * sizeof(cl_float), a_input, &ret);
-      //  oclCheckError(ret, CL_SUCCESS);
-//3	
-        c_output_obj = clCreateBuffer(context, CL_MEM_READ_WRITE, imageW * imageH * sizeof(cl_float), NULL, &ret);
-   //     oclCheckError(ret, CL_SUCCESS);
-//4	
-        d_output_obj = clCreateBuffer(context, CL_MEM_WRITE_ONLY, imageW * imageH * sizeof(cl_float), NULL, &ret);
-     //   oclCheckError(ret, CL_SUCCESS);
+    a_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY| CL_MEM_COPY_HOST_PTR ,  imageW * imageH * sizeof(cl_float), NULL , &ret);
+        
+   b_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR, KERNEL_LENGTH * sizeof(cl_float), NULL , &ret);
+   	
+   c_output_obj = clCreateBuffer(context, CL_MEM_READ_WRITE, imageW * imageH * sizeof(cl_float), NULL, &ret);
+	
+   d_output_obj = clCreateBuffer(context, CL_MEM_READ_WRITE, imageW * imageH * sizeof(cl_float), NULL, &ret);
+
 
 //**** End of Creating Buffer
-
-    
- 
+//
     // #Region 4:  Source code loading and compilation
    
      load_file_to_memory(filename, &kernelsource);
@@ -209,21 +199,36 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 
 
     // Build the program
-    ret = clBuildProgram(program, 1, &device_id, options, NULL, &err);
-     if(err != CL_SUCCESS)
+    ret = clBuildProgram(program, 1, &device_id, NULL, NULL, NULL);
+     if(ret != CL_SUCCESS)
       print_error("Program Compilation is Failed", __LINE__);
-     
+        if(ret ==  CL_BUILD_PROGRAM_FAILURE){
+	// Determine the size of the log
+    size_t log_size;
+    clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
 
-    // #Region 5-1 : Kernel Creation and Arguments assignments   
+    // Allocate memory for the log
+    char *log = (char *) malloc(log_size);
+
+    // Get the log
+    clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, log_size, log, NULL);
+
+    // Print the log
+    printf("%s\n", log);
+	}
+     
+     // #Region 5-1 : Kernel Creation and Arguments assignments   
 
     // Create the OpenCL kernel
-    cl_kernel ConvolutionRows_kernel = clCreateKernel(program, "convolutionRows", &ret);
-             if(ConvolutionRows_kernel == NULL) 
+       cl_kernel ConvolutionRows_kernel = clCreateKernel(program, "convolutionRows", &err);
+             if(err != CL_SUCCESS) 
        print_error("Creating KERNEL IS FAILED", __LINE__);
 	     
-       cl_kernel ConvolutionColumns_kernel = clCreateKernel(program, "convolutionColumns", &err);
-          if(ConvolutionColumns_kernel== NULL)
+   cl_kernel ConvolutionColumns_kernel = clCreateKernel(program, "convolutionColumns", &err);
+   
+          if(err != CL_SUCCESS)
        print_error("Creating KERNEL IS FAILED", __LINE__);
+
 ////////////
         
 	   
@@ -236,7 +241,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
     // Set the arguments of the kernel
     //
   ret|= clSetKernelArg(ConvolutionRows_kernel, 0, sizeof(cl_mem),  &c_output_obj);
-  ret|= clSetKernelArg(ConvolutionRows_kernel, 1, sizeof(cl_mem), &a_input_obj);
+  ret|= clSetKernelArg(ConvolutionRows_kernel, 1, sizeof(cl_mem),  &a_input_obj);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 2, sizeof(cl_mem),  &b_input_obj);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 3, sizeof(unsigned int), (void*)&imageW);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 4, sizeof(unsigned int), (void*)&imageH);
@@ -250,7 +255,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
        localWorkSize[0] = ROWS_BLOCKDIM_X;
        localWorkSize[1] = ROWS_BLOCKDIM_Y;
        globalWorkSize[0] = imageW;
-       globalWorkSize[1] = imageH / COLUMNS_RESULT_STEPS;
+       globalWorkSize[1] = imageH / ROWS_RESULT_STEPS;
 
        ret = clEnqueueNDRangeKernel(command_queue, ConvolutionRows_kernel, 2, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
            if(ret!=CL_SUCCESS) 
@@ -264,22 +269,23 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
   ret|= clSetKernelArg(ConvolutionColumns_kernel ,4, sizeof(unsigned int), (void*)&imageH);
   ret|= clSetKernelArg(ConvolutionColumns_kernel ,5, sizeof(unsigned int), (void*)&imageW);
   
-       localWorkSize[0] = ROWS_BLOCKDIM_X;
-       localWorkSize[1] = ROWS_BLOCKDIM_Y;
+       localWorkSize[0] = COLUMNS_BLOCKDIM_X;
+       localWorkSize[1] = COLUMNS_BLOCKDIM_Y;
        globalWorkSize[0] = imageW;
-       globalWorkSize[1] = imageH / ROWS_RESULT_STEPS;
+       globalWorkSize[1] = imageH / COLUMNS_RESULT_STEPS;
 
     ret = clEnqueueNDRangeKernel(command_queue, ConvolutionColumns_kernel, 2, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
            if(ret!=CL_SUCCESS) 
            print_error("EXECUTION IS FAILED", __LINE__);
-    
 //////////////////////////////////////////////////////////////
    
 ////////// #Region 7 : Reading BAck kernel Buffers to Output
       
     // Read the memory buffer C on the device to the local variable C
      ret = clEnqueueReadBuffer(command_queue, d_output_obj, CL_TRUE, 0, 
-         imageW * imageH * sizeof(cl_float), d_output, 0, NULL, NULL);     
+         imageW * imageH * sizeof(cl_float), d_output, 0, NULL, NULL);
+       
+
      // #Region 8: Printing the results
      // Store inout and outputs in output.txt file 
                  fclose(fp);
@@ -294,7 +300,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
     ret = clReleaseContext(context);
     free(a_input);
     free(b_input);
-   // free(c_output);
+    free(c_output);
     free(d_output);
       return 0;
 
