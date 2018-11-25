@@ -55,10 +55,12 @@ int main(int argc, char** argv) {
     cl_mem a_input_obj , b_input_obj , c_output_obj , d_output_obj;   //OpenCL memory buffer objects  
 //**  
      ////*** Host_memory  
-     cl_float*  a_input     =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
-     cl_float*  b_input     =  (cl_float *) malloc(KERNEL_LENGTH   * sizeof(cl_float));
-     cl_float*  c_output    =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
-     cl_float*  d_output    =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  a_input     = (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  b_input     = (cl_float *) malloc(KERNEL_LENGTH   * sizeof(cl_float));
+     cl_float*  d_output     = (cl_float *) malloc(KERNEL_LENGTH   * sizeof(cl_float));   
+     cl_float*  h_Buffer    = (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  h_OutputCPU = (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  h_OutputGPU = (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
 //***
 
 	//// Initializing host memory
@@ -182,9 +184,9 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 
  /////////////
  //
-     a_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,  imageW * imageH * sizeof(cl_float), b_input, &ret);
+     a_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, KERNEL_LENGTH * sizeof(cl_float), b_input, &ret);
   //2      
-        b_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, KERNEL_LENGTH * sizeof(cl_float), a_input, &ret);
+        b_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, imageW * imageH * sizeof(cl_float), a_input, &ret);
       //  oclCheckError(ret, CL_SUCCESS);
 //3	
         c_output_obj = clCreateBuffer(context, CL_MEM_READ_WRITE, imageW * imageH * sizeof(cl_float), NULL, &ret);
@@ -207,20 +209,20 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 
 
     // Build the program
-    ret = clBuildProgram(program, 1, &device_id, options, NULL, NULL);
-     if(ret != CL_SUCCESS)
+    ret = clBuildProgram(program, 1, &device_id, options, NULL, &err);
+     if(err != CL_SUCCESS)
       print_error("Program Compilation is Failed", __LINE__);
      
 
     // #Region 5-1 : Kernel Creation and Arguments assignments   
 
     // Create the OpenCL kernel
-       cl_kernel ConvolutionRows_kernel = clCreateKernel(program, "convolutionRows", &err);
-             if(err != CL_SUCCESS) 
+    cl_kernel ConvolutionRows_kernel = clCreateKernel(program, "convolutionRows", &ret);
+             if(ConvolutionRows_kernel == NULL) 
        print_error("Creating KERNEL IS FAILED", __LINE__);
 	     
        cl_kernel ConvolutionColumns_kernel = clCreateKernel(program, "convolutionColumns", &err);
-             if(err != CL_SUCCESS)
+          if(ConvolutionColumns_kernel== NULL)
        print_error("Creating KERNEL IS FAILED", __LINE__);
 ////////////
         
@@ -234,7 +236,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
     // Set the arguments of the kernel
     //
   ret|= clSetKernelArg(ConvolutionRows_kernel, 0, sizeof(cl_mem),  &c_output_obj);
-  ret|= clSetKernelArg(ConvolutionRows_kernel, 1, sizeof(cl_mem),  &a_input_obj);
+  ret|= clSetKernelArg(ConvolutionRows_kernel, 1, sizeof(cl_mem), &a_input_obj);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 2, sizeof(cl_mem),  &b_input_obj);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 3, sizeof(unsigned int), (void*)&imageW);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 4, sizeof(unsigned int), (void*)&imageH);
