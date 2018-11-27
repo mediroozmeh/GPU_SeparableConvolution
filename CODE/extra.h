@@ -61,4 +61,3 @@ load_file_to_memory(char *kernelname ,char **result)
 
 
 
-

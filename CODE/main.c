@@ -9,7 +9,8 @@
 #endif
 #include "extra.h"
 #include "param.h"
-
+#include "convolution.h"
+#include "math.h"
 
 size_t localWorkSize[2], globalWorkSize[2];
 
@@ -38,7 +39,7 @@ int main(int argc, char** argv) {
     char *source_str;
     size_t source_size;
     size_t preferred_groupsize;
-          
+    unsigned int iteration=16;      
     char *kernelsource;
     char filename[]= "ConvolutionSeparable.cl";
 
@@ -48,23 +49,29 @@ int main(int argc, char** argv) {
     const unsigned int imageH = 3072; 
 
 ///    
-    cl_mem a_input_obj , b_input_obj , c_output_obj , d_output_obj;   //OpenCL memory buffer objects  
+    cl_mem a_in_mem , b_in_mem , c_out_mem , d_out_mem;   //OpenCL memory buffer objects  
 //**  
      ////*** Host_memory  
-     cl_float*  a_input     =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
-     cl_float*  b_input     =  (cl_float *) malloc(KERNEL_LENGTH   * sizeof(cl_float));
-     cl_float*  c_output    =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
-     cl_float*  d_output    =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  a_in =   (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  b_in=    (cl_float *) malloc(KERNEL_LENGTH   * sizeof(cl_float)); 
+     cl_float*  d_out =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  c_out_host =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+     cl_float*  d_out_host =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
+
 //***
+//
+      
+   
+
 
 	//// Initializing host memory
 	
        for(unsigned int i = 0; i < imageW * imageH; i++)
-            a_input[i] = (cl_float)(rand() % 16);
+            a_in[i] = (cl_float)(rand() % 16);
 
 
       for(unsigned int i = 0; i < KERNEL_LENGTH; i++)
-            b_input[i] = (cl_float)(rand() % 16);
+            b_in[i] = (cl_float)(rand() % 16);
 
        
  //**** end of initializing hostmemory
@@ -178,14 +185,35 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 
  /////////////
  //
-    a_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY| CL_MEM_COPY_HOST_PTR ,  imageW * imageH * sizeof(cl_float), NULL , &ret);
+ //
+#ifdef PINNED
+    
+    printf("PINNED\n");
+    a_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE| CL_MEM_COPY_HOST_PTR ,  imageW * imageH * sizeof(cl_float), a_in , &ret);
         
-   b_input_obj = clCreateBuffer(context, CL_MEM_READ_ONLY|CL_MEM_COPY_HOST_PTR, KERNEL_LENGTH * sizeof(cl_float), NULL , &ret);
+   b_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE| CL_MEM_COPY_HOST_PTR, KERNEL_LENGTH * sizeof(cl_float), b_in , &ret);
    	
-   c_output_obj = clCreateBuffer(context, CL_MEM_READ_WRITE, imageW * imageH * sizeof(cl_float), NULL, &ret);
+   c_out_mem = clCreateBuffer(context, CL_MEM_READ_WRITE| CL_MEM_COPY_HOST_PTR, imageW * imageH * sizeof(cl_float), NULL, &ret);
 	
-   d_output_obj = clCreateBuffer(context, CL_MEM_READ_WRITE, imageW * imageH * sizeof(cl_float), NULL, &ret);
+   d_out_mem = clCreateBuffer(context, CL_MEM_READ_WRITE| CL_MEM_COPY_HOST_PTR, imageW * imageH * sizeof(cl_float), NULL, &ret);
 
+#else  
+
+  a_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE ,  imageW * imageH * sizeof(cl_float),NULL , &ret);
+        
+   b_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, KERNEL_LENGTH * sizeof(cl_float), NULL , &ret);
+   	
+   c_out_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, imageW * imageH * sizeof(cl_float), NULL, &ret);
+	
+   d_out_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, imageW * imageH * sizeof(cl_float), NULL, &ret);
+  
+
+   ret = clEnqueueWriteBuffer(command_queue, a_in_mem, CL_TRUE, 0, imageW * imageH * sizeof(cl_float), a_in,0, NULL, NULL);
+
+   ret = clEnqueueWriteBuffer(command_queue, b_in_mem, CL_TRUE, 0,KERNEL_LENGTH * sizeof(cl_float), b_in,0, NULL, NULL);
+
+
+#endif
 
 //**** End of Creating Buffer
 //
@@ -240,9 +268,14 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 
     // Set the arguments of the kernel
     //
-  ret|= clSetKernelArg(ConvolutionRows_kernel, 0, sizeof(cl_mem),  &c_output_obj);
-  ret|= clSetKernelArg(ConvolutionRows_kernel, 1, sizeof(cl_mem),  &a_input_obj);
-  ret|= clSetKernelArg(ConvolutionRows_kernel, 2, sizeof(cl_mem),  &b_input_obj);
+    //
+    for (i=0; i < iteration ; i++)
+
+    {
+
+  ret|= clSetKernelArg(ConvolutionRows_kernel, 0, sizeof(cl_mem),  &c_out_mem);
+  ret|= clSetKernelArg(ConvolutionRows_kernel, 1, sizeof(cl_mem),  &a_in_mem);
+  ret|= clSetKernelArg(ConvolutionRows_kernel, 2, sizeof(cl_mem),  &b_in_mem);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 3, sizeof(unsigned int), (void*)&imageW);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 4, sizeof(unsigned int), (void*)&imageH);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 5, sizeof(unsigned int), (void*)&imageW);
@@ -262,9 +295,9 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
            print_error("EXECUTION IS FAILED", __LINE__);
 	   //////////////////////////////
 	   //
-  ret|= clSetKernelArg(ConvolutionColumns_kernel ,0, sizeof(cl_mem), &d_output_obj);
-  ret|= clSetKernelArg(ConvolutionColumns_kernel ,1, sizeof(cl_mem), &c_output_obj);
-  ret|= clSetKernelArg(ConvolutionColumns_kernel ,2, sizeof(cl_mem), &b_input_obj);
+  ret|= clSetKernelArg(ConvolutionColumns_kernel ,0, sizeof(cl_mem), &d_out_mem);
+  ret|= clSetKernelArg(ConvolutionColumns_kernel ,1, sizeof(cl_mem), &c_out_mem);
+  ret|= clSetKernelArg(ConvolutionColumns_kernel ,2, sizeof(cl_mem), &b_in_mem);
   ret|= clSetKernelArg(ConvolutionColumns_kernel ,3, sizeof(unsigned int), (void*)&imageW);
   ret|= clSetKernelArg(ConvolutionColumns_kernel ,4, sizeof(unsigned int), (void*)&imageH);
   ret|= clSetKernelArg(ConvolutionColumns_kernel ,5, sizeof(unsigned int), (void*)&imageW);
@@ -277,18 +310,50 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
     ret = clEnqueueNDRangeKernel(command_queue, ConvolutionColumns_kernel, 2, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
            if(ret!=CL_SUCCESS) 
            print_error("EXECUTION IS FAILED", __LINE__);
+
+   }
 //////////////////////////////////////////////////////////////
    
 ////////// #Region 7 : Reading BAck kernel Buffers to Output
       
     // Read the memory buffer C on the device to the local variable C
-     ret = clEnqueueReadBuffer(command_queue, d_output_obj, CL_TRUE, 0, 
-         imageW * imageH * sizeof(cl_float), d_output, 0, NULL, NULL);
+     ret = clEnqueueReadBuffer(command_queue, d_out_mem , CL_TRUE, 0, 
+         imageW * imageH * sizeof(cl_float), d_out, 0, NULL, NULL);
+       if(ret!=CL_SUCCESS)
+        print_error("Read Bubber is failed", __LINE__);
+       printf("%d\n",ret);
+
        
 
-     // #Region 8: Printing the results
-     // Store inout and outputs in output.txt file 
-                 fclose(fp);
+     // #Region 8: Result Validation
+       convolutionRowHost(c_out_host, a_in , b_in, imageW, imageH, KERNEL_RADIUS );
+       convolutionColumnHost(d_out_host, a_in , b_in, imageW, imageH, KERNEL_RADIUS);
+      double sum = 0, delta = 0;
+        double L2norm;
+        for(unsigned int i = 0 ; i < imageW * imageH ; i++)
+	
+	{
+
+            delta += (d_out_host[i] - d_out[i]) * ( d_out_host[i] - d_out[i]);
+            sum += d_out[i] * d_out_host[i];
+	    fprintf(fp,"host output :%f and Device output:%f and input:%f \n", d_out_host[i], d_out[i], a_in[i]);
+
+        }
+       // L2norm = sqrt( delta / sum );
+         L2norm =  delta / sum ;
+
+       // printf("Relative L2 norm: %.3e  \n\n", L2norm);
+          printf("Relative L2 norms: %lf  \n\n", sum);
+        
+
+
+        ///////////////////
+
+                 
+       
+       fclose(fp);
+
+
 
      
     // Clean up
@@ -298,10 +363,9 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
     ret = clReleaseProgram(program);
     ret = clReleaseCommandQueue(command_queue);
     ret = clReleaseContext(context);
-    free(a_input);
-    free(b_input);
-    free(c_output);
-    free(d_output);
+    free(a_in);
+    free(b_in);
+    free(d_out);
       return 0;
 
 }
