@@ -11,7 +11,7 @@
 
 
 //Passed down by clBuildProgram
-/*
+
 #define KERNEL_RADIUS 8
 
 #define      ROWS_BLOCKDIM_X 16
@@ -19,11 +19,11 @@
 #define   COLUMNS_BLOCKDIM_X 16
 #define   COLUMNS_BLOCKDIM_Y 8
 
-#define    ROWS_RESULT_STEPS 4
+#define    ROWS_RESULT_STEPS 8
 #define      ROWS_HALO_STEPS 1
-#define COLUMNS_RESULT_STEPS 4
+#define COLUMNS_RESULT_STEPS 8
 #define   COLUMNS_HALO_STEPS 1
-*/
+
 
 
 
