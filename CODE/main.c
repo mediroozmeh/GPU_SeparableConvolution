@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
 //**  
      ////*** Host_memory  
      cl_float*  a_in =   (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
-     cl_float*  b_in=    (cl_float *) malloc(KERNEL_LENGTH   * sizeof(cl_float)); 
+     cl_float*  b_in=    (cl_float *) malloc(FULL_FILTER   * sizeof(cl_float)); 
      cl_float*  d_out =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
      cl_float*  c_out_host =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
      cl_float*  d_out_host =  (cl_float *) malloc(imageW * imageH * sizeof(cl_float));
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
             a_in[i] = (cl_float)(rand() % 16);
 
 
-      for(unsigned int i = 0; i < KERNEL_LENGTH; i++)
+      for(unsigned int i = 0; i < FULL_FILTER; i++)
             b_in[i] = (cl_float)(rand() % 16);
 
        
@@ -191,7 +191,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
     printf("PINNED\n");
     a_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE| CL_MEM_COPY_HOST_PTR ,  imageW * imageH * sizeof(cl_float), a_in , &ret);
         
-   b_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE| CL_MEM_COPY_HOST_PTR, KERNEL_LENGTH * sizeof(cl_float), b_in , &ret);
+   b_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE| CL_MEM_COPY_HOST_PTR, FULL_FILTER * sizeof(cl_float), b_in , &ret);
    	
    c_out_mem = clCreateBuffer(context, CL_MEM_READ_WRITE| CL_MEM_COPY_HOST_PTR, imageW * imageH * sizeof(cl_float), NULL, &ret);
 	
@@ -201,7 +201,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 
   a_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE ,  imageW * imageH * sizeof(cl_float),NULL , &ret);
         
-   b_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, KERNEL_LENGTH * sizeof(cl_float), NULL , &ret);
+   b_in_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, FULL_FILTER * sizeof(cl_float), NULL , &ret);
    	
    c_out_mem = clCreateBuffer(context, CL_MEM_READ_WRITE, imageW * imageH * sizeof(cl_float), NULL, &ret);
 	
@@ -210,7 +210,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 
    ret = clEnqueueWriteBuffer(command_queue, a_in_mem, CL_TRUE, 0, imageW * imageH * sizeof(cl_float), a_in,0, NULL, NULL);
 
-   ret = clEnqueueWriteBuffer(command_queue, b_in_mem, CL_TRUE, 0,KERNEL_LENGTH * sizeof(cl_float), b_in,0, NULL, NULL);
+   ret = clEnqueueWriteBuffer(command_queue, b_in_mem, CL_TRUE, 0,FULL_FILTER * sizeof(cl_float), b_in,0, NULL, NULL);
 
 
 #endif
@@ -248,11 +248,11 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
      // #Region 5-1 : Kernel Creation and Arguments assignments   
 
     // Create the OpenCL kernel
-       cl_kernel ConvolutionRows_kernel = clCreateKernel(program, "convolutionRows", &err);
+       cl_kernel ConvolutionRows_kernel = clCreateKernel(program, "Horizontalconv", &err);
              if(err != CL_SUCCESS) 
        print_error("Creating KERNEL IS FAILED", __LINE__);
 	     
-   cl_kernel ConvolutionColumns_kernel = clCreateKernel(program, "convolutionColumns", &err);
+   cl_kernel ConvolutionColumns_kernel = clCreateKernel(program, "Verticalconv", &err);
    
           if(err != CL_SUCCESS)
        print_error("Creating KERNEL IS FAILED", __LINE__);
@@ -264,15 +264,14 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
      if(ret != CL_SUCCESS)
   print_error("GetkernelWorkGroup info is failed", __LINE__);
     fprintf(fp,"The preferred group size is:%d\n ",  preferred_groupsize);
-
+   
+    
+    
 
     // Set the arguments of the kernel
     //
     //
-    for (i=0; i < iteration ; i++)
-
-    {
-
+   
   ret|= clSetKernelArg(ConvolutionRows_kernel, 0, sizeof(cl_mem),  &c_out_mem);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 1, sizeof(cl_mem),  &a_in_mem);
   ret|= clSetKernelArg(ConvolutionRows_kernel, 2, sizeof(cl_mem),  &b_in_mem);
@@ -285,10 +284,12 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
  //
  //
            // te the OpenCL kernel on the list
-       localWorkSize[0] = ROWS_BLOCKDIM_X;
-       localWorkSize[1] = ROWS_BLOCKDIM_Y;
-       globalWorkSize[0] = imageW;
-       globalWorkSize[1] = imageH / ROWS_RESULT_STEPS;
+  
+    localWorkSize[0] = H_LOCAL_X;
+    localWorkSize[1] = H_LOCAL_Y;
+    globalWorkSize[0] = imageW / H_OUT_SIZE;
+    globalWorkSize[1] = imageH;
+
 
        ret = clEnqueueNDRangeKernel(command_queue, ConvolutionRows_kernel, 2, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
            if(ret!=CL_SUCCESS) 
@@ -302,16 +303,25 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
   ret|= clSetKernelArg(ConvolutionColumns_kernel ,4, sizeof(unsigned int), (void*)&imageH);
   ret|= clSetKernelArg(ConvolutionColumns_kernel ,5, sizeof(unsigned int), (void*)&imageW);
   
-       localWorkSize[0] = COLUMNS_BLOCKDIM_X;
-       localWorkSize[1] = COLUMNS_BLOCKDIM_Y;
-       globalWorkSize[0] = imageW;
-       globalWorkSize[1] = imageH / COLUMNS_RESULT_STEPS;
+    
+
+
+    localWorkSize[0] = V_LOCAL_X;
+    localWorkSize[1] = V_LOCAL_Y;
+    globalWorkSize[0] = imageW;
+    globalWorkSize[1] = imageH / V_OUT_SIZE;
+
+
 
     ret = clEnqueueNDRangeKernel(command_queue, ConvolutionColumns_kernel, 2, NULL, globalWorkSize, localWorkSize, 0, NULL, NULL);
            if(ret!=CL_SUCCESS) 
            print_error("EXECUTION IS FAILED", __LINE__);
 
-   }
+
+
+
+
+
 //////////////////////////////////////////////////////////////
    
 ////////// #Region 7 : Reading BAck kernel Buffers to Output
@@ -320,36 +330,45 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
      ret = clEnqueueReadBuffer(command_queue, d_out_mem , CL_TRUE, 0, 
          imageW * imageH * sizeof(cl_float), d_out, 0, NULL, NULL);
        if(ret!=CL_SUCCESS)
-        print_error("Read Bubber is failed", __LINE__);
-       printf("%d\n",ret);
+        print_error("Read Bufferr is failed", __LINE__);
+     
 
        
 
      // #Region 8: Result Validation
-       convolutionRowHost(c_out_host, a_in , b_in, imageW, imageH, KERNEL_RADIUS );
-       convolutionColumnHost(d_out_host, a_in , b_in, imageW, imageH, KERNEL_RADIUS);
+       convolutionRowHost(c_out_host, a_in , b_in, imageW, imageH, HALF_FILTER );
+       convolutionColumnHost(d_out_host, c_out_host , b_in, imageW, imageH, HALF_FILTER);
       double sum = 0, delta = 0;
         double L2norm;
-        for(unsigned int i = 0 ; i < imageW * imageH ; i++)
+      
+/*      
+*/
+  
+        err=0;
+	for(unsigned int i = 0 ; i < imageW * imageH ; i++)
+          
+		
+	{        
+             if(d_out[i]-d_out_host[i] !=0 )
+		
+		{
+
+      	 	err=1;
+
+	    fprintf(fp,"ERROR: Host output :%f and Device output:%f and Pixel:%f \n", d_out_host[i], d_out[i], i);
+        }
+  }
+
+	if(err==0)
 	
 	{
+	fprintf(fp,"\n\n Test is Passed, performance metrics can be analyzed using SCOREP trace files. \n\n");	
 
-            delta += (d_out_host[i] - d_out[i]) * ( d_out_host[i] - d_out[i]);
-            sum += d_out[i] * d_out_host[i];
-	    fprintf(fp,"host output :%f and Device output:%f and input:%f \n", d_out_host[i], d_out[i], a_in[i]);
-
-        }
-       // L2norm = sqrt( delta / sum );
-         L2norm =  delta / sum ;
-
-       // printf("Relative L2 norm: %.3e  \n\n", L2norm);
-          printf("Relative L2 norms: %lf  \n\n", sum);
-        
+	}
 
 
-        ///////////////////
+        printf("\n Please open output.txt file for more information\n");
 
-                 
        
        fclose(fp);
 

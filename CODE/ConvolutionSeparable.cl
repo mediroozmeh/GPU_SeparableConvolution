@@ -1,78 +1,67 @@
-/*
- * Copyright 1993-2010 NVIDIA Corporation.  All rights reserved.
- *
- * Please refer to the NVIDIA end user license agreement (EULA) associated
- * with this source code for terms and conditions that govern your use of
- * this software. Any use, reproduction, disclosure, or distribution of
- * this software and related documentation outside the terms of the EULA
- * is strictly prohibited.
- *
- */
-
 
 //Passed down by clBuildProgram
 
-#define KERNEL_RADIUS 8
+#define HALF_FILTER 8
 
-#define      ROWS_BLOCKDIM_X 16
-#define      ROWS_BLOCKDIM_Y 4
-#define   COLUMNS_BLOCKDIM_X 16
-#define   COLUMNS_BLOCKDIM_Y 8
+#define      H_LOCAL_X 16
+#define      H_LOCAL_Y 4
+#define   V_LOCAL_X 16
+#define   V_LOCAL_Y 8
 
-#define    ROWS_RESULT_STEPS 8
-#define      ROWS_HALO_STEPS 1
-#define COLUMNS_RESULT_STEPS 8
-#define   COLUMNS_HALO_STEPS 1
-
-
+#define    H_OUT_SIZE 8
+#define      H_STRIDE_SIZE 1
+#define V_OUT_SIZE 8
+#define   V_STRIDE_SIZE 1
 
 
-#define KERNEL_LENGTH (2 * KERNEL_RADIUS + 1)
+
+
+#define FULL_FILTER (2 * HALF_FILTER + 1)
 
 
 
 ////////////////////////////////////////////////////////////////////////////////
 // Row convolution filter
 ////////////////////////////////////////////////////////////////////////////////
-__kernel __attribute__((reqd_work_group_size(ROWS_BLOCKDIM_X, ROWS_BLOCKDIM_Y, 1)))
-void convolutionRows(
-    __global float *d_Dst,
-    __global float *d_Src,
-    __constant float *c_Kernel,
-    int imageW,
-    int imageH,
-    int pitch
+__kernel __attribute__((reqd_work_group_size(H_LOCAL_X, H_LOCAL_Y, 1)))
+void Horizontalconv(
+    __global float *c_out,
+    __global float *a_in,
+    __constant float *b_in,
+    int image_w,
+    int image_h,
+    int window_size
 ){
-    __local float l_Data[ROWS_BLOCKDIM_Y][(ROWS_RESULT_STEPS + 2 * ROWS_HALO_STEPS) * ROWS_BLOCKDIM_X];
+    __local float local_buffer[H_LOCAL_Y][(H_OUT_SIZE + 2 * H_STRIDE_SIZE) * H_LOCAL_X];
 
     //Offset to the left halo edge
-    const int baseX = (get_group_id(0) * ROWS_RESULT_STEPS - ROWS_HALO_STEPS) * ROWS_BLOCKDIM_X + get_local_id(0);
-    const int baseY = get_group_id(1) * ROWS_BLOCKDIM_Y + get_local_id(1);
+    const int index_x = (get_group_id(0) * H_OUT_SIZE - H_STRIDE_SIZE) * H_LOCAL_X + get_local_id(0);
+    const int index_y = get_group_id(1) * H_LOCAL_Y + get_local_id(1);
 
-    d_Src += baseY * pitch + baseX;
-    d_Dst += baseY * pitch + baseX;
+    a_in += index_y * window_size + index_x;
+    c_out += index_y * window_size + index_x;
 
     //Load main data
-    for(int i = ROWS_HALO_STEPS; i < ROWS_HALO_STEPS + ROWS_RESULT_STEPS; i++)
-        l_Data[get_local_id(1)][get_local_id(0) + i * ROWS_BLOCKDIM_X] = d_Src[i * ROWS_BLOCKDIM_X];
+    for(int i = H_STRIDE_SIZE; i < H_STRIDE_SIZE + H_OUT_SIZE; i++)
+        local_buffer[get_local_id(1)][get_local_id(0) + i * H_LOCAL_X] = a_in[i * H_LOCAL_X];
 
     //Load left halo
-    for(int i = 0; i < ROWS_HALO_STEPS; i++)
-        l_Data[get_local_id(1)][get_local_id(0) + i * ROWS_BLOCKDIM_X]  = (baseX + i * ROWS_BLOCKDIM_X >= 0) ? d_Src[i * ROWS_BLOCKDIM_X] : 0;
+    for(int i = 0; i < H_STRIDE_SIZE; i++)
+        local_buffer[get_local_id(1)][get_local_id(0) + i * H_LOCAL_X]  = (index_x + i * H_LOCAL_X >= 0) ? a_in[i * H_LOCAL_X] : 0;
 
     //Load right halo
-    for(int i = ROWS_HALO_STEPS + ROWS_RESULT_STEPS; i < ROWS_HALO_STEPS + ROWS_RESULT_STEPS + ROWS_HALO_STEPS; i++)
-        l_Data[get_local_id(1)][get_local_id(0) + i * ROWS_BLOCKDIM_X]  = (baseX + i * ROWS_BLOCKDIM_X < imageW) ? d_Src[i * ROWS_BLOCKDIM_X] : 0;
+    for(int i = H_STRIDE_SIZE + H_OUT_SIZE; i < H_STRIDE_SIZE + H_OUT_SIZE + H_STRIDE_SIZE; i++)
+        local_buffer[get_local_id(1)][get_local_id(0) + i * H_LOCAL_X]  = (index_x + i * H_LOCAL_X < image_w) ? a_in[i * H_LOCAL_X] : 0;
 
     //Compute and store results
     barrier(CLK_LOCAL_MEM_FENCE);
-    for(int i = ROWS_HALO_STEPS; i < ROWS_HALO_STEPS + ROWS_RESULT_STEPS; i++){
+    for(int i = H_STRIDE_SIZE; i < H_STRIDE_SIZE + H_OUT_SIZE; i++){
         float sum = 0;
 
-        for(int j = -KERNEL_RADIUS; j <= KERNEL_RADIUS; j++)
-            sum += c_Kernel[KERNEL_RADIUS - j] * l_Data[get_local_id(1)][get_local_id(0) + i * ROWS_BLOCKDIM_X + j];
+        for(int j = -HALF_FILTER; j <= HALF_FILTER; j++)
+            sum += b_in[HALF_FILTER - j] * local_buffer[get_local_id(1)][get_local_id(0) + i * H_LOCAL_X + j];
 
-        d_Dst[i * ROWS_BLOCKDIM_X] = sum;
+        c_out[i * H_LOCAL_X] = sum;
     }
 }
 
@@ -81,44 +70,44 @@ void convolutionRows(
 ////////////////////////////////////////////////////////////////////////////////
 // Column convolution filter
 ////////////////////////////////////////////////////////////////////////////////
-__kernel __attribute__((reqd_work_group_size(COLUMNS_BLOCKDIM_X, COLUMNS_BLOCKDIM_Y, 1)))
-void convolutionColumns(
-    __global float *d_Dst,
-    __global float *d_Src,
-    __constant float *c_Kernel,
-    int imageW,
-    int imageH,
-    int pitch
+__kernel __attribute__((reqd_work_group_size(V_LOCAL_X, V_LOCAL_Y, 1)))
+void Verticalconv(
+    __global float *c_out,
+    __global float *a_in,
+    __constant float *b_in,
+    int image_w,
+    int image_h,
+    int window_size
 ){
-    __local float l_Data[COLUMNS_BLOCKDIM_X][(COLUMNS_RESULT_STEPS + 2 * COLUMNS_HALO_STEPS) * COLUMNS_BLOCKDIM_Y + 1];
+    __local float local_buffer[V_LOCAL_X][(V_OUT_SIZE + 2 * V_STRIDE_SIZE) * V_LOCAL_Y + 1];
 
     //Offset to the upper halo edge
-    const int baseX = get_group_id(0) * COLUMNS_BLOCKDIM_X + get_local_id(0);
-    const int baseY = (get_group_id(1) * COLUMNS_RESULT_STEPS - COLUMNS_HALO_STEPS) * COLUMNS_BLOCKDIM_Y + get_local_id(1);
-    d_Src += baseY * pitch + baseX;
-    d_Dst += baseY * pitch + baseX;
+    const int index_x = get_group_id(0) * V_LOCAL_X + get_local_id(0);
+    const int index_y = (get_group_id(1) * V_OUT_SIZE - V_STRIDE_SIZE) * V_LOCAL_Y + get_local_id(1);
+    a_in += index_y * window_size + index_x;
+    c_out += index_y * window_size + index_x;
 
     //Load main data
-    for(int i = COLUMNS_HALO_STEPS; i < COLUMNS_HALO_STEPS + COLUMNS_RESULT_STEPS; i++)
-        l_Data[get_local_id(0)][get_local_id(1) + i * COLUMNS_BLOCKDIM_Y] = d_Src[i * COLUMNS_BLOCKDIM_Y * pitch];
+    for(int i = V_STRIDE_SIZE; i < V_STRIDE_SIZE + V_OUT_SIZE; i++)
+        local_buffer[get_local_id(0)][get_local_id(1) + i * V_LOCAL_Y] = a_in[i * V_LOCAL_Y * window_size];
 
     //Load upper halo
-    for(int i = 0; i < COLUMNS_HALO_STEPS; i++)
-        l_Data[get_local_id(0)][get_local_id(1) + i * COLUMNS_BLOCKDIM_Y] = (baseY + i * COLUMNS_BLOCKDIM_Y >= 0) ? d_Src[i * COLUMNS_BLOCKDIM_Y * pitch] : 0;
+    for(int i = 0; i < V_STRIDE_SIZE; i++)
+        local_buffer[get_local_id(0)][get_local_id(1) + i * V_LOCAL_Y] = (index_y + i * V_LOCAL_Y >= 0) ? a_in[i * V_LOCAL_Y * window_size] : 0;
 
     //Load lower halo
-    for(int i = COLUMNS_HALO_STEPS + COLUMNS_RESULT_STEPS; i < COLUMNS_HALO_STEPS + COLUMNS_RESULT_STEPS + COLUMNS_HALO_STEPS; i++)
-        l_Data[get_local_id(0)][get_local_id(1) + i * COLUMNS_BLOCKDIM_Y]  = (baseY + i * COLUMNS_BLOCKDIM_Y < imageH) ? d_Src[i * COLUMNS_BLOCKDIM_Y * pitch] : 0;
+    for(int i = V_STRIDE_SIZE + V_OUT_SIZE; i < V_STRIDE_SIZE + V_OUT_SIZE + V_STRIDE_SIZE; i++)
+        local_buffer[get_local_id(0)][get_local_id(1) + i * V_LOCAL_Y]  = (index_y + i * V_LOCAL_Y < image_h) ? a_in[i * V_LOCAL_Y * window_size] : 0;
 
     //Compute and store results
     barrier(CLK_LOCAL_MEM_FENCE);
-    for(int i = COLUMNS_HALO_STEPS; i < COLUMNS_HALO_STEPS + COLUMNS_RESULT_STEPS; i++){
+    for(int i = V_STRIDE_SIZE; i < V_STRIDE_SIZE + V_OUT_SIZE; i++){
         float sum = 0;
 
-        for(int j = -KERNEL_RADIUS; j <= KERNEL_RADIUS; j++)
-            sum += c_Kernel[KERNEL_RADIUS - j] * l_Data[get_local_id(0)][get_local_id(1) + i * COLUMNS_BLOCKDIM_Y + j];
+        for(int j = -HALF_FILTER; j <= HALF_FILTER; j++)
+            sum += b_in[HALF_FILTER - j] * local_buffer[get_local_id(0)][get_local_id(1) + i * V_LOCAL_Y + j];
 
-        d_Dst[i * COLUMNS_BLOCKDIM_Y * pitch] = sum;
+        c_out[i * V_LOCAL_Y * window_size] = sum;
     }
 }
 

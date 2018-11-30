@@ -1,20 +1,20 @@
 
-#define KERNEL_RADIUS 8
+#define HALF_FILTER 8
 
-#define      ROWS_BLOCKDIM_X 16
-#define      ROWS_BLOCKDIM_Y 4
-#define   COLUMNS_BLOCKDIM_X 16
-#define   COLUMNS_BLOCKDIM_Y 8
+#define H_LOCAL_X 16
+#define H_LOCAL_Y 4
+#define V_LOCAL_X 16
+#define V_LOCAL_Y 8
 
-#define    ROWS_RESULT_STEPS 8
-#define      ROWS_HALO_STEPS 1
-#define COLUMNS_RESULT_STEPS 8
-#define   COLUMNS_HALO_STEPS 1
-
-
+#define H_OUT_SIZE 8
+#define H_STRIDE_SIZE 1
+#define V_OUT_SIZE 8
+#define V_STRIDE_SIZE 1
 
 
-#define KERNEL_LENGTH (2 * KERNEL_RADIUS + 1)
+
+
+#define FULL_FILTER (2 * HALF_FILTER + 1)
 
 
 
