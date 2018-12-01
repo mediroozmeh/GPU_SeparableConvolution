@@ -336,8 +336,8 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
        
 
      // #Region 8: Result Validation
-       convolutionRowHost(c_out_host, a_in , b_in, imageW, imageH, HALF_FILTER );
-       convolutionColumnHost(d_out_host, c_out_host , b_in, imageW, imageH, HALF_FILTER);
+       Horizontalconv_CPU(c_out_host, a_in , b_in, imageW, imageH, HALF_FILTER );
+       Verticalconv_CPU(d_out_host, c_out_host , b_in, imageW, imageH, HALF_FILTER);
       double sum = 0, delta = 0;
         double L2norm;
       
@@ -362,7 +362,7 @@ clGetDeviceInfo (device_id , CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(maxWorkGroup)
 	if(err==0)
 	
 	{
-	fprintf(fp,"\n\n Test is Passed, performance metrics can be analyzed using SCOREP trace files. \n\n");	
+	fprintf(fp,"\n\n Test is Passed, performance metrics can be analyzed using SCOREP trace files (make with scorep=1). \n\n");	
 
 	}
 
